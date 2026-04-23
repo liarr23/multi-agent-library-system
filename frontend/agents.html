@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多Agent协作监控 - 图书管理系统</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        
+        .header { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 30px; border-radius: 15px; margin-bottom: 20px; border: 1px solid #334155; }
+        .header h1 { font-size: 28px; margin-bottom: 10px; color: #f8fafc; }
+        .header p { color: #94a3b8; }
+        
+        .dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        
+        .card { background: #1e293b; border-radius: 12px; padding: 20px; border: 1px solid #334155; }
+        .card-title { font-size: 18px; font-weight: bold; margin-bottom: 15px; color: #f1f5f9; display: flex; align-items: center; gap: 10px; }
+        
+        .agent-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; }
+        .agent-card { background: #0f172a; border-radius: 10px; padding: 20px; border: 1px solid #334155; transition: all 0.3s; }
+        .agent-card:hover { border-color: #6366f1; transform: translateY(-2px); }
+        .agent-card.running { border-color: #10b981; }
+        .agent-card.stopped { border-color: #ef4444; }
+        
+        .agent-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .agent-name { font-size: 16px; font-weight: bold; color: #f8fafc; }
+        .agent-status { padding: 4px 12px; border-radius: 20px; font-size: 12px; }
+        .status-running { background: #065f46; color: #34d399; }
+        .status-stopped { background: #7f1d1d; color: #fca5a5; }
+        
+        .agent-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 15px; }
+        .stat-item { text-align: center; }
+        .stat-value { font-size: 20px; font-weight: bold; color: #6366f1; }
+        .stat-label { font-size: 12px; color: #94a3b8; }
+        
+        .message-flow { background: #0f172a; border-radius: 10px; padding: 20px; border: 1px solid #334155; max-height: 400px; overflow-y: auto; }
+        .message-item { padding: 12px; border-left: 3px solid #6366f1; margin-bottom: 10px; background: #1e293b; border-radius: 0 8px 8px 0; }
+        .message-header { display: flex; justify-content: space-between; margin-bottom: 5px; }
+        .message-from { font-weight: bold; color: #818cf8; }
+        .message-to { color: #34d399; }
+        .message-time { color: #64748b; font-size: 12px; }
+        .message-content { color: #cbd5e1; font-size: 14px; }
+        
+        .task-queue { background: #0f172a; border-radius: 10px; padding: 20px; border: 1px solid #334155; }
+        .task-item { padding: 15px; background: #1e293b; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #6366f1; }
+        .task-header { display: flex; justify-content: space-between; margin-bottom: 8px; }
+        .task-id { font-weight: bold; color: #818cf8; }
+        .task-status { padding: 2px 8px; border-radius: 12px; font-size: 12px; }
+        .task-pending { background: #854d0e; color: #fde047; }
+        .task-processing { background: #1e40af; color: #93c5fd; }
+        .task-completed { background: #166534; color: #86efac; }
+        
+        .controls { display: flex; gap: 10px; margin-bottom: 20px; }
+        .btn { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: all 0.3s; }
+        .btn-primary { background: #6366f1; color: white; }
+        .btn-primary:hover { background: #4f46e5; }
+        .btn-success { background: #10b981; color: white; }
+        .btn-success:hover { background: #059669; }
+        .btn-danger { background: #ef4444; color: white; }
+        .btn-danger:hover { background: #dc2626; }
+        
+        .refresh-indicator { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10b981; margin-right: 8px; animation: pulse 2s infinite; }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .coordinator-visual { text-align: center; padding: 30px; }
+        .coordinator-center { display: inline-block; padding: 20px 40px; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); border-radius: 15px; font-size: 20px; font-weight: bold; margin-bottom: 20px; }
+        .agents-around { display: flex; justify-content: center; gap: 40px; flex-wrap: wrap; }
+        .agent-node { padding: 15px 25px; background: #1e293b; border: 2px solid #6366f1; border-radius: 10px; position: relative; }
+        .agent-node::before { content: ''; position: absolute; top: -20px; left: 50%; width: 2px; height: 20px; background: #6366f1; }
+        
+        .stats-overview { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
+        .stat-card { background: #1e293b; padding: 20px; border-radius: 10px; text-align: center; border: 1px solid #334155; }
+        .stat-number { font-size: 32px; font-weight: bold; color: #6366f1; }
+        .stat-label { color: #94a3b8; margin-top: 5px; }
+        
+        .loading { text-align: center; padding: 40px; color: #94a3b8; }
+        .error { color: #ef4444; padding: 20px; background: #7f1d1d; border-radius: 8px; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <div class="header">
+                <h1>🤖 多Agent协作监控面板</h1>
+                <p>实时监控图书管理系统中各Agent的工作状态、任务分发和消息传递</p>
+            </div>
+            
+            <div class="controls">
+                <button class="btn btn-primary" @click="refreshData">
+                    <span class="refresh-indicator"></span>刷新数据
+                </button>
+                <button class="btn btn-success" @click="startAllAgents">启动所有Agent</button>
+                <button class="btn btn-danger" @click="stopAllAgents">停止所有Agent</button>
+                <button class="btn btn-primary" @click="simulateTask">模拟任务</button>
+            </div>
+            
+            <div class="stats-overview">
+                <div class="stat-card">
+                    <div class="stat-number">{{ stats.registered_agents || 0 }}</div>
+                    <div class="stat-label">注册Agent</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{{ stats.message_history_count || 0 }}</div>
+                    <div class="stat-label">消息总数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{{ stats.task_count || 0 }}</div>
+                    <div class="stat-label">任务总数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{{ runningAgents }}</div>
+                    <div class="stat-label">运行中Agent</div>
+                </div>
+            </div>
+            
+            <div class="dashboard">
+                <div class="card">
+                    <div class="card-title">🎯 协调器架构</div>
+                    <div class="coordinator-visual">
+                        <div class="coordinator-center">协调器</div>
+                        <div class="agents-around">
+                            <div class="agent-node" v-for="agent in agents" :key="agent.name">
+                                {{ agent.name }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-title">📊 Agent状态</div>
+                    <div class="agent-grid">
+                        <div class="agent-card" :class="agent.is_running ? 'running' : 'stopped'" v-for="agent in agents" :key="agent.name">
+                            <div class="agent-header">
+                                <div class="agent-name">{{ agent.name }}</div>
+                                <div class="agent-status" :class="agent.is_running ? 'status-running' : 'status-stopped'">
+                                    {{ agent.is_running ? '运行中' : '已停止' }}
+                                </div>
+                            </div>
+                            <div style="color: #94a3b8; font-size: 14px; margin-bottom: 10px;">
+                                {{ agent.description }}
+                            </div>
+                            <div class="agent-stats">
+                                <div class="stat-item">
+                                    <div class="stat-value">{{ agent.processed_count || 0 }}</div>
+                                    <div class="stat-label">已处理</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-value">{{ agent.error_count || 0 }}</div>
+                                    <div class="stat-label">错误</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="dashboard">
+                <div class="card">
+                    <div class="card-title">📨 消息流监控</div>
+                    <div class="message-flow">
+                        <div v-if="messages.length === 0" class="loading">暂无消息记录</div>
+                        <div class="message-item" v-for="message in messages" :key="message.id">
+                            <div class="message-header">
+                                <div>
+                                    <span class="message-from">{{ message.sender }}</span>
+                                    <span style="color: #64748b;"> → </span>
+                                    <span class="message-to">{{ message.receiver }}</span>
+                                </div>
+                                <div class="message-time">{{ formatTime(message.timestamp) }}</div>
+                            </div>
+                            <div class="message-content">
+                                <strong>{{ message.task_type }}</strong>: {{ message.content }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-title">📋 任务队列</div>
+                    <div class="task-queue">
+                        <div v-if="tasks.length === 0" class="loading">暂无任务</div>
+                        <div class="task-item" v-for="task in tasks" :key="task.id">
+                            <div class="task-header">
+                                <div class="task-id">任务 #{{ task.id }}</div>
+                                <div class="task-status" :class="'task-' + task.status">
+                                    {{ getStatusText(task.status) }}
+                                </div>
+                            </div>
+                            <div style="color: #cbd5e1; margin-bottom: 5px;">
+                                {{ task.description }}
+                            </div>
+                            <div style="color: #64748b; font-size: 12px;">
+                                分配给: {{ task.assigned_to }} | 创建时间: {{ formatTime(task.created_at) }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-title">🧪 测试Agent协作</div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px;">
+                    <div>
+                        <h4 style="color: #f1f5f9; margin-bottom: 10px;">图书搜索任务</h4>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" v-model="testSearch" placeholder="输入搜索关键词" style="flex: 1; padding: 10px; border-radius: 5px; border: 1px solid #334155; background: #0f172a; color: #f8fafc;">
+                            <button class="btn btn-primary" @click="testBookSearch">搜索</button>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h4 style="color: #f1f5f9; margin-bottom: 10px;">推荐任务</h4>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="number" v-model="testUserId" placeholder="用户ID" style="flex: 1; padding: 10px; border-radius: 5px; border: 1px solid #334155; background: #0f172a; color: #f8fafc;">
+                            <button class="btn btn-success" @click="testRecommend">获取推荐</button>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h4 style="color: #f1f5f9; margin-bottom: 10px;">分析任务</h4>
+                        <button class="btn btn-primary" @click="testAnalytics">生成系统报告</button>
+                    </div>
+                </div>
+                
+                <div v-if="testResult" style="margin-top: 20px; padding: 15px; background: #0f172a; border-radius: 8px; border: 1px solid #334155;">
+                    <h4 style="color: #f1f5f9; margin-bottom: 10px;">测试结果</h4>
+                    <pre style="color: #cbd5e1; white-space: pre-wrap; font-size: 14px;">{{ testResult }}</pre>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const { createApp, ref, onMounted, computed } = Vue;
+        
+        createApp({
+            setup() {
+                const agents = ref([]);
+                const messages = ref([]);
+                const tasks = ref([]);
+                const stats = ref({});
+                const testSearch = ref('');
+                const testUserId = ref('');
+                const testResult = ref('');
+                
+                const runningAgents = computed(() => {
+                    return agents.value.filter(agent => agent.is_running).length;
+                });
+                
+                const fetchData = async () => {
+                    try {
+                        const [agentsResponse, messagesResponse, tasksResponse] = await Promise.all([
+                            axios.get('/api/agents/status'),
+                            axios.get('/api/agents/messages?limit=50'),
+                            axios.get('/api/agents/tasks')
+                        ]);
+
+                        agents.value = agentsResponse.data.agents || [];
+                        stats.value = agentsResponse.data.coordinator || {};
+
+                        messages.value = (messagesResponse.data.messages || []).map((msg) => {
+                            const taskType = msg.content?.task_type || msg.message_type || 'message';
+                            const content = msg.content?.data
+                                ? JSON.stringify(msg.content.data)
+                                : JSON.stringify(msg.content);
+
+                            return {
+                                id: msg.id,
+                                sender: msg.sender,
+                                receiver: msg.receiver,
+                                task_type: taskType,
+                                content,
+                                timestamp: msg.timestamp
+                            };
+                        });
+
+                        tasks.value = tasksResponse.data.tasks || [];
+                    } catch (error) {
+                        console.error('获取数据失败:', error);
+                        // 使用模拟数据
+                        agents.value = [
+                            { name: 'BookAgent', description: '图书管理、借阅归还', is_running: true, processed_count: 45, error_count: 2 },
+                            { name: 'RecommendAgent', description: '个性化推荐、用户画像', is_running: true, processed_count: 32, error_count: 1 },
+                            { name: 'AnalyticsAgent', description: '数据分析、报表生成', is_running: true, processed_count: 28, error_count: 0 }
+                        ];
+                        stats.value = {
+                            registered_agents: 3,
+                            message_history_count: 156,
+                            task_count: 89
+                        };
+                    }
+                };
+                
+                const refreshData = () => {
+                    fetchData();
+                };
+                
+                const startAllAgents = async () => {
+                    try {
+                        await axios.post('/api/agents/start');
+                        alert('所有Agent已启动');
+                        fetchData();
+                    } catch (error) {
+                        alert('启动失败: ' + error.message);
+                    }
+                };
+                
+                const stopAllAgents = async () => {
+                    try {
+                        await axios.post('/api/agents/stop');
+                        alert('所有Agent已停止');
+                        fetchData();
+                    } catch (error) {
+                        alert('停止失败: ' + error.message);
+                    }
+                };
+                
+                const simulateTask = () => {
+                    const taskId = Math.floor(Math.random() * 10000);
+                    const taskTypes = [
+                        { desc: '搜索图书', agent: 'BookAgent' },
+                        { desc: '生成推荐', agent: 'RecommendAgent' },
+                        { desc: '分析数据', agent: 'AnalyticsAgent' }
+                    ];
+                    const taskType = taskTypes[Math.floor(Math.random() * taskTypes.length)];
+                    
+                    tasks.value.unshift({
+                        id: taskId,
+                        description: taskType.desc,
+                        assigned_to: taskType.agent,
+                        status: 'pending',
+                        created_at: new Date().toISOString()
+                    });
+                    
+                    // 模拟任务处理
+                    setTimeout(() => {
+                        const task = tasks.value.find(t => t.id === taskId);
+                        if (task) {
+                            task.status = 'processing';
+                            
+                            setTimeout(() => {
+                                task.status = 'completed';
+                            }, 2000);
+                        }
+                    }, 1000);
+                };
+                
+                const testBookSearch = async () => {
+                    if (!testSearch.value) return;
+                    
+                    testResult.value = '正在搜索...';
+                    try {
+                        const response = await axios.get(`/api/books/?keyword=${encodeURIComponent(testSearch.value)}`);
+                        testResult.value = JSON.stringify(response.data, null, 2);
+                        
+                        // 添加消息记录
+                        messages.value.unshift({
+                            id: Date.now(),
+                            sender: '用户',
+                            receiver: 'BookAgent',
+                            task_type: 'book_search',
+                            content: `搜索关键词: ${testSearch.value}`,
+                            timestamp: new Date().toISOString()
+                        });
+                    } catch (error) {
+                        testResult.value = '搜索失败: ' + error.message;
+                    }
+                };
+                
+                const testRecommend = async () => {
+                    if (!testUserId.value) return;
+                    
+                    testResult.value = '正在获取推荐...';
+                    try {
+                        const response = await axios.get(`/api/users/${testUserId.value}/recommendations?limit=5`);
+                        testResult.value = JSON.stringify(response.data, null, 2);
+                        
+                        messages.value.unshift({
+                            id: Date.now(),
+                            sender: '用户',
+                            receiver: 'RecommendAgent',
+                            task_type: 'recommend',
+                            content: `为用户 ${testUserId.value} 获取推荐`,
+                            timestamp: new Date().toISOString()
+                        });
+                    } catch (error) {
+                        testResult.value = '获取推荐失败: ' + error.message;
+                    }
+                };
+                
+                const testAnalytics = async () => {
+                    testResult.value = '正在生成报告...';
+                    try {
+                        const response = await axios.get('/api/analytics/overview');
+                        testResult.value = JSON.stringify(response.data, null, 2);
+                        
+                        messages.value.unshift({
+                            id: Date.now(),
+                            sender: '用户',
+                            receiver: 'AnalyticsAgent',
+                            task_type: 'analytics_overview',
+                            content: '生成系统概览报告',
+                            timestamp: new Date().toISOString()
+                        });
+                    } catch (error) {
+                        testResult.value = '生成报告失败: ' + error.message;
+                    }
+                };
+                
+                const formatTime = (timestamp) => {
+                    if (!timestamp) return '';
+                    const date = new Date(timestamp);
+                    return date.toLocaleTimeString('zh-CN');
+                };
+                
+                const getStatusText = (status) => {
+                    const texts = {
+                        'pending': '等待中',
+                        'processing': '处理中',
+                        'completed': '已完成'
+                    };
+                    return texts[status] || status;
+                };
+                
+                onMounted(() => {
+                    fetchData();
+                    // 每5秒刷新一次
+                    setInterval(fetchData, 5000);
+                });
+                
+                return {
+                    agents,
+                    messages,
+                    tasks,
+                    stats,
+                    runningAgents,
+                    testSearch,
+                    testUserId,
+                    testResult,
+                    refreshData,
+                    startAllAgents,
+                    stopAllAgents,
+                    simulateTask,
+                    testBookSearch,
+                    testRecommend,
+                    testAnalytics,
+                    formatTime,
+                    getStatusText
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
