@@ -17,7 +17,7 @@ class BookAgent(BaseAgent):
     """图书管理Agent"""
     
     def __init__(self):
-                super().__init__(
+        super().__init__(
             name="BookAgent",
             description="负责图书管理、借阅归还、库存管理等核心业务"
         )

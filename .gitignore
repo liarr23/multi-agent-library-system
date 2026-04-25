@@ -1,0 +1,10 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Test / tooling cache
+.pytest_cache/
+
+# Local logs
+*.log

@@ -14,10 +14,13 @@ router = APIRouter(prefix="/books", tags=["图书管理"])
 
 def _unwrap_agent_result(result: dict, default_status: int = 400) -> dict:
     """统一处理协调器结果，兼容业务错误与异常错误。"""
-    if result.get("status") == "error":
+    if result.get("status") in {"error", "timeout", "failed"}:
         raise HTTPException(status_code=default_status, detail=result.get("error", "请求失败"))
 
     payload = result.get("result", {})
+    if isinstance(payload, dict) and payload.get("status") == "error":
+        raise HTTPException(status_code=default_status, detail=payload.get("error", "请求失败"))
+
     if isinstance(payload, dict) and "error" in payload:
         raise HTTPException(status_code=default_status, detail=payload["error"])
 

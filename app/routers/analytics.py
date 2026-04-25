@@ -13,6 +13,21 @@ from app.agents import coordinator
 router = APIRouter(prefix="/analytics", tags=["数据分析"])
 
 
+def _unwrap_agent_result(result: dict, default_status: int = 400) -> dict:
+    """统一处理协调器结果，兼容业务错误与异常错误。"""
+    if result.get("status") in {"error", "timeout", "failed"}:
+        raise HTTPException(status_code=default_status, detail=result.get("error", "请求失败"))
+
+    payload = result.get("result", {})
+    if isinstance(payload, dict) and payload.get("status") == "error":
+        raise HTTPException(status_code=default_status, detail=payload.get("error", "请求失败"))
+
+    if isinstance(payload, dict) and "error" in payload:
+        raise HTTPException(status_code=default_status, detail=payload["error"])
+
+    return payload
+
+
 class ReportRequest(BaseModel):
     """报表生成请求"""
     report_type: str  # overview, popular, trends, category
@@ -30,10 +45,7 @@ async def get_system_overview():
         preferred_agent="AnalyticsAgent"
     )
     
-    if result["status"] == "error":
-        raise HTTPException(status_code=400, detail=result["error"])
-    
-    return result["result"]
+    return _unwrap_agent_result(result)
 
 
 @router.get("/popular")
@@ -51,10 +63,7 @@ async def get_popular_books(
         preferred_agent="AnalyticsAgent"
     )
     
-    if result["status"] == "error":
-        raise HTTPException(status_code=400, detail=result["error"])
-    
-    return result["result"]
+    return _unwrap_agent_result(result)
 
 
 @router.get("/trends")
@@ -70,10 +79,7 @@ async def get_borrow_trends(
         preferred_agent="AnalyticsAgent"
     )
     
-    if result["status"] == "error":
-        raise HTTPException(status_code=400, detail=result["error"])
-    
-    return result["result"]
+    return _unwrap_agent_result(result)
 
 
 @router.get("/category-stats")
@@ -85,10 +91,7 @@ async def get_category_statistics():
         preferred_agent="AnalyticsAgent"
     )
     
-    if result["status"] == "error":
-        raise HTTPException(status_code=400, detail=result["error"])
-    
-    return result["result"]
+    return _unwrap_agent_result(result)
 
 
 @router.post("/report")
@@ -105,10 +108,7 @@ async def generate_report(report_request: ReportRequest):
         preferred_agent="AnalyticsAgent"
     )
     
-    if result["status"] == "error":
-        raise HTTPException(status_code=400, detail=result["error"])
-    
-    return result["result"]
+    return _unwrap_agent_result(result)
 
 
 @router.get("/user-activity")
@@ -126,23 +126,22 @@ async def get_user_activity(
         preferred_agent="AnalyticsAgent"
     )
     
-    if result["status"] == "error":
-        raise HTTPException(status_code=400, detail=result["error"])
-    
-    return result["result"]
+    return _unwrap_agent_result(result)
 
 
 @router.get("/agent-status")
 async def get_agent_status():
     """获取所有Agent状态"""
-    agents_status = {}
-    for agent_name, agent in coordinator.agents.items():
-        agents_status[agent_name] = agent.get_status()
-    
+    agents_status = {
+        agent_name: agent.get_status()
+        for agent_name, agent in coordinator._agents.items()
+    }
+
     return {
         "coordinator": {
-            "total_agents": len(coordinator.agents),
-            "total_messages": len(coordinator._message_history)
+            "name": coordinator.name,
+            "total_agents": len(coordinator._agents),
+            "task_statistics": coordinator.get_task_statistics(),
         },
-        "agents": agents_status
+        "agents": agents_status,
     }

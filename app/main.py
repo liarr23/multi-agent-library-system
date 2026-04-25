@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 
 from app.config import settings
 from app.database import init_db
+from app.agents import coordinator
 from app.routers import books, users, borrows, analytics
 from app.api import agents
 
@@ -16,10 +17,14 @@ async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # 启动时初始化数据库
     init_db()
+    await coordinator.start()
     print(f"{settings.APP_NAME} v{settings.APP_VERSION} 已启动")
-    yield
-    # 关闭时清理资源
-    print("系统关闭中...")
+    try:
+        yield
+    finally:
+        # 关闭时清理资源
+        await coordinator.stop()
+        print("系统关闭中...")
 
 
 # 创建FastAPI应用
